@@ -101,6 +101,9 @@ class Modem(threading.Thread):
 
         self.l = logging.getLogger(f"Modem [{identifier}]")
 
+        # Add dictionary to track multi-part messages
+        self.multipart_messages = {}  # key: (sender, message_ref), value: SMS object
+
         threading.Thread.__init__(self)
         self.start()
 
@@ -295,6 +298,20 @@ class Modem(threading.Thread):
         Handle incoming SMS from the python-gsmmodem-new layer.
         The _sms parameter is a gsmmodem.modem.ReceivedSms.
         """
+        # Check if this is a multi-part message
+        message_ref = None
+        total_parts = None
+        part_number = None
+        
+        # Extract UDH (User Data Header) information if present
+        if hasattr(_sms, 'udh') and _sms.udh:
+            for element in _sms.udh:
+                if element['id'] == 0:  # Concatenated short messages
+                    message_ref = element['reference']
+                    total_parts = element['total_parts']
+                    part_number = element['part_number']
+                    break
+
         new_sms = sms.SMS(
             sms_id=None,
             recipient=self.modem_config.phone_number,
@@ -302,9 +319,30 @@ class Modem(threading.Thread):
             sender=_sms.number,
             timestamp=_sms.time,
             receiving_modem=self,
+            message_ref=message_ref,
+            total_parts=total_parts,
+            part_number=part_number
         )
 
-        self._handle_incoming_sms(new_sms)
+        # Handle multi-part message
+        if new_sms.is_multipart():
+            key = (new_sms.get_sender(), new_sms.message_ref)
+            if key in self.multipart_messages:
+                # Add this part to existing message
+                existing_sms = self.multipart_messages[key]
+                existing_sms.add_part(new_sms.part_number, new_sms.text)
+                
+                if existing_sms.is_part_complete():
+                    # All parts received, use the complete message
+                    self._handle_incoming_sms(existing_sms)
+                    # Clean up
+                    del self.multipart_messages[key]
+            else:
+                # First part of a new multi-part message
+                self.multipart_messages[key] = new_sms
+        else:
+            # Single part message, handle normally
+            self._handle_incoming_sms(new_sms)
 
     def _handle_incoming_sms(self, _sms: sms.SMS) -> None:
         """

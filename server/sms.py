@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+import base64
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -56,6 +57,10 @@ class SMS:
         sender: Optional[str] = None,
         receiving_modem: Optional[Modem] = None,
         flash: bool = False,
+        # New fields for multi-part messages
+        message_ref: Optional[int] = None,
+        total_parts: Optional[int] = None,
+        part_number: Optional[int] = None,
     ) -> None:
         """
         This class represents an SMS.
@@ -66,6 +71,9 @@ class SMS:
         @param sender: The sender's phone number in international format as string. For received SMS, this is sometimes a human readable string with a name.
         @param receiving_modem: The receiving modem's identifier.
         @param flash: Send SMS as flash message, which should pop up on the destination phone and then disappear.
+        @param message_ref: Reference number for multi-part messages to identify parts of the same message.
+        @param total_parts: Total number of parts in a multi-part message. Defaults to 1 for single messages.
+        @param part_number: Current part number in a multi-part message.
         """
         self.sms_id = sms_id if sms_id else str(uuid.uuid4())
         self.recipient = recipient
@@ -75,6 +83,11 @@ class SMS:
         self.sender = sender
         self.receiving_modem = receiving_modem
         self.flash = flash
+        # Multi-part message fields
+        self.message_ref = message_ref
+        self.total_parts = total_parts if total_parts is not None else 1  # Default to 1 for single messages
+        self.part_number = part_number
+        self.parts = {}  # Dictionary to store message parts
 
     def get_timestamp(self) -> datetime.datetime:
         """ Returns the timestamp as Python datetime. """
@@ -148,3 +161,77 @@ class SMS:
             )
 
         return text
+
+    def to_dict(self, include_modem: bool = True) -> dict:
+        """
+        Convert the SMS object to a dictionary format suitable for RPC responses.
+        @param include_modem: Whether to include the modem identifier in the output
+        @return: Returns a dictionary containing all relevant SMS information
+        """
+        # Always encode text in base64 for consistent format
+        text = self.get_concatenated_text() if self.is_multipart() else self.get_text() or ""
+        text_encoded = base64.b64encode(text.encode('latin1')).decode('ascii')
+
+        # Convert timestamp to ISO format string for XML-RPC serialization
+        timestamp = self.get_timestamp()
+        if isinstance(timestamp, datetime.datetime):
+            timestamp = timestamp.isoformat()
+
+        result = {
+            "id": str(self.get_id() or ""),
+            "recipient": str(self.get_recipient() or ""),
+            "text": str(text_encoded),
+            "sender": str(self.get_sender() or ""),
+            "timestamp": timestamp,
+            "flash": bool(self.is_flash() if hasattr(self, 'is_flash') else False),
+            "is_multipart": bool(self.is_multipart()),
+            "total_parts": int(self.total_parts),
+            "received_parts": int(len(self.parts) if self.is_multipart() else 1)
+        }
+        
+        if include_modem and self.receiving_modem:
+            result["modem"] = str(self.receiving_modem.get_identifier())
+            
+        return result
+
+    def is_multipart(self) -> bool:
+        """Returns True if this is a multi-part message."""
+        # Check if we have multiple parts stored or if total_parts was explicitly set
+        return len(self.parts) > 1 or (self.total_parts is not None and self.total_parts > 1)
+
+    def is_part_complete(self) -> bool:
+        """Returns True if all parts of a multi-part message have been received."""
+        if not self.is_multipart():
+            return True
+        return len(self.parts) == self.total_parts
+
+    def get_concatenated_text(self) -> str:
+        """Returns the concatenated text of all parts in order."""
+        if not self.is_multipart():
+            return self.text
+        if not self.is_part_complete():
+            return self.text  # Return current text if not complete
+        # Concatenate all parts in order
+        try:
+            return ''.join(self.parts[i] for i in range(1, self.total_parts + 1))
+        except KeyError as e:
+            # If we're missing a part, return the current text
+            return self.text
+
+    def add_part(self, part_number: int, text: str) -> None:
+        """
+        Add a part to the multi-part message.
+        @param part_number: The part number (1-based index)
+        @param text: The text content of this part
+        @raises ValueError: If part_number is invalid or out of range
+        """
+        if part_number < 1:
+            raise ValueError(f"Invalid part number {part_number}. Must be positive")
+            
+        if part_number > self.total_parts:
+            self.total_parts = part_number
+            
+        self.parts[part_number] = text
+        # Update the main text if this is the first part
+        if part_number == 1:
+            self.text = text

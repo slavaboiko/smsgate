@@ -297,43 +297,30 @@ class ModemPool:
             del self.sent_sms[i]
 
         self.l.debug("Clean up internal modempool data structures.")
-
-        try:
-
-            _tmp = []
-            for identifier in self.buffered_sms:
-                self.l.debug(
-                    f"Clean up internal modempool data structures for {identifier}."
-                )
-
-                for sms_id, _sms in self.buffered_sms[identifier].items():
-
-                    if _sms.get_age().total_seconds() > 60:  # todo increase value
-                        self.l.debug(f"Delete entry for {sms_id}.")
-                        _tmp.append((identifier, sms_id))
-
-            for identifier, sms_id in _tmp:
-                del self.buffered_sms[identifier][sms_id]
-
-        except Exception as e:
-            self.l.error("Exception: " + str(e), exc_info=1)
-            self.l.error(traceback.format_exc(), exc_info=1)
+        # Remove buffered_sms cleanup as we now handle it in get_buffered_sms
 
         self.l.debug("Clean up completed.")
 
     def get_buffered_sms(self, identifier: str) -> List[SMS]:
         """
-        Retrieve a buffered SMS.
-        Incoming SMS are usually forwarded by e-mail if this is configured, but it is still necessary to keep it for the
-            XMLRPC  interface. Therefore, incoming SMS are buffered for some time.
+        Retrieve and remove buffered SMS messages.
+        Messages are kept in buffer until they are retrieved via this method.
+        After retrieval, they are considered "read" and removed from the buffer.
         @param identifier: The modem identifier as string.
         @return: Returns a list of buffered SMS objects. An empty list is returned if there are no SMS objects.
         """
-        return list(self.buffered_sms.get(identifier, {}).values())
+        if identifier not in self.buffered_sms:
+            return []
+            
+        # Get all messages and clear the buffer
+        messages = list(self.buffered_sms[identifier].values())
+        self.buffered_sms[identifier] = {}
+        return messages
 
     def _buffer_sms(self, identifier: str, _sms: SMS) -> None:
         """
-        Buffer an incoming SMS for later retrivial via the XMLRPC API.
+        Buffer an incoming SMS for later retrieval via the XMLRPC API.
+        Messages will be kept until they are retrieved via get_buffered_sms().
         @param identifier: The identifier for the modem that received the SMS.
         @param _sms: The SMS object.
         """

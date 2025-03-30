@@ -1,7 +1,14 @@
+._DS_Store
+.DS_Store
+._.DS_Store
+
+._.gitignore
 __pycache__/
 *.py[cod]
 *$py.class
 *~
+._*.py
+
 
 .env
 .venv

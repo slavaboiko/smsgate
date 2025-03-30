@@ -208,15 +208,7 @@ class RPCServer(xmlrpc.XMLRPC):
                 buffered_sms = self.pool.get_buffered_sms(modem_identifier)
                 for _sms in buffered_sms:
                     if _sms is not None:  # Skip None values
-                        sms_dict = {
-                            "id": _sms.get_id() or "",
-                            "recipient": _sms.get_recipient() or "",
-                            "text": _sms.get_text() or "",
-                            "sender": _sms.get_sender() or "",
-                            "timestamp": _sms.get_timestamp(),
-                            "flash": _sms.is_flash() if hasattr(_sms, 'is_flash') else False
-                        }
-                        sms_list.append(sms_dict)
+                        sms_list.append(_sms.to_dict())
             else:
                 self.l.error(
                     f"Invalid API token sent by client {self._getPeerAddress()}. API token was {token}."
@@ -357,16 +349,7 @@ class RPCServer(xmlrpc.XMLRPC):
                 buffered_sms = self.pool.get_buffered_sms(modem_identifier)
                 for _sms in buffered_sms:
                     if _sms is not None:  # Skip None values
-                        sms_dict = {
-                            "id": _sms.get_id() or "",
-                            "recipient": _sms.get_recipient() or "",
-                            "text": _sms.get_text() or "",
-                            "sender": _sms.get_sender() or "",
-                            "timestamp": _sms.get_timestamp(),
-                            "flash": _sms.is_flash() if hasattr(_sms, 'is_flash') else False,
-                            "modem": modem_identifier  # Add modem identifier to identify source
-                        }
-                        sms_list.append(sms_dict)
+                        sms_list.append(_sms.to_dict())
 
         return sms_list
 

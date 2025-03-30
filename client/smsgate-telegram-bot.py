@@ -3,6 +3,7 @@ import os
 import logging
 import asyncio
 import ssl
+import base64
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -190,7 +191,7 @@ Available commands:
                 if info['health_state_message']:
                     status_text += f"Health Message: {info['health_state_message']}\n"
                 status_text += "\n"
-            await update.message.reply_text(status_text)
+            await update.message.reply_text(status_text, disable_web_page_preview=True)
         except Exception as e:
             await update.message.reply_text(f"Error getting status: {str(e)}")
 
@@ -209,11 +210,11 @@ Available commands:
                 message = (
                     f"From: {sms['sender']}\n"
                     f"To: {sms['recipient']}\n"
-                    f"Text: {sms['text']}\n"
                     f"Time: {sms['timestamp']}\n"
-                    f"ID: {sms['id']}"
+                    f"ID: {sms['id']}\n"
+                    f"Text:\n\n{sms['text']}\n"
                 )
-                await update.message.reply_text(message)
+                await update.message.reply_text(message, disable_web_page_preview=True)
         except Exception as e:
             await update.message.reply_text(f"Error getting SMS: {str(e)}")
 
@@ -243,11 +244,11 @@ Available commands:
                     message = (
                         f"From: {sms['sender']}\n"
                         f"To: {sms['recipient']}\n"
-                        f"Text: {sms['text']}\n"
                         f"Time: {sms['timestamp']}\n"
-                        f"ID: {sms['id']}"
+                        f"ID: {sms['id']}\n"
+                        f"Text:\n\n{sms['text']}\n"
                     )
-                    await update.message.reply_text(message)
+                    await update.message.reply_text(message, disable_web_page_preview=True)
                 await update.message.reply_text("---")
         except Exception as e:
             await update.message.reply_text(f"Error getting SMS: {str(e)}")
@@ -280,9 +281,9 @@ Available commands:
             if len(response) > 4000:
                 chunks = [response[i:i+4000] for i in range(0, len(response), 4000)]
                 for chunk in chunks:
-                    await update.message.reply_text(chunk)
+                    await update.message.reply_text(chunk, disable_web_page_preview=True)
             else:
-                await update.message.reply_text(response)
+                await update.message.reply_text(response, disable_web_page_preview=True)
                 
         except Exception as e:
             await update.message.reply_text(f"Error reading stored SMS: {str(e)}")
@@ -407,13 +408,13 @@ Available commands:
                                 f"New SMS received on modem {modem}!\n"
                                 f"From: {sms['sender']}\n"
                                 f"To: {sms['recipient']}\n"
-                                f"Text: {sms['text']}\n"
-                                f"Time: {sms['timestamp']}"
+                                f"Time: {sms['timestamp']}\n"
+                                f"Text:\n\n{sms['text']}\n"
                             )
                             # Notify all allowed users
                             for user_id in self.allowed_users:
                                 try:
-                                    await self.application.bot.send_message(chat_id=user_id, text=message)
+                                    await self.application.bot.send_message(chat_id=user_id, text=message, disable_web_page_preview=True)
                                 except Exception as e:
                                     logger.error(f"Error sending notification to user {user_id}: {e}")
             except Exception as e:

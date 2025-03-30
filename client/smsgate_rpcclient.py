@@ -3,6 +3,7 @@ import xmlrpc.client
 import ssl
 import os
 import time
+import base64
 from typing import Dict, List, Optional, Union, Tuple
 from datetime import datetime
 
@@ -57,6 +58,14 @@ class SMSGateRPCClient:
         result = self.client.get_stats(self.api_token)
         return result[1]  # Return the stats dictionary
 
+    def _decode_text(self, text: str) -> str:
+        """
+        Decode text that might be base64 encoded.
+        @param text: The text to decode
+        @return: Decoded text
+        """
+        return base64.b64decode(text.encode('ascii')).decode("ascii")
+
     def get_sms(self, phone_number: str = "") -> List[Dict[str, Union[str, bool, datetime]]]:
         """
         Get SMS messages.
@@ -67,7 +76,10 @@ class SMSGateRPCClient:
         Returns:
             List of SMS messages as dictionaries
         """
-        return self.client.get_sms(self.api_token, phone_number)
+        messages = self.client.get_sms(self.api_token, phone_number)
+        for msg in messages:
+            msg['text'] = self._decode_text(msg['text'])
+        return messages
 
     def send_ussd(self, sender: str, ussd_code: str) -> Tuple[str, str]:
         """
@@ -155,4 +167,7 @@ class SMSGateRPCClient:
         Get all SMS messages from all modems.
         @return: Returns a list of dictionaries containing SMS data or an empty list.
         """
-        return self.client.get_all_sms(self.api_token)
+        messages = self.client.get_all_sms(self.api_token)
+        for msg in messages:
+            msg['text'] = self._decode_text(msg['text'])
+        return messages
