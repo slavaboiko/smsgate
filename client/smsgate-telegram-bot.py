@@ -377,15 +377,15 @@ Available commands:
         is_authorized = user.id in self.allowed_users
         
         message = (
-            f"Your Telegram Information:\n"
-            f"ID: {user.id}\n"
-            f"Username: @{user.username if user.username else 'None'}\n"
-            f"First Name: {user.first_name}\n"
-            f"Last Name: {user.last_name if user.last_name else 'None'}\n"
-            f"Language Code: {user.language_code if user.language_code else 'None'}\n\n"
-            f"Authorization Status: {'✅ Authorized' if is_authorized else '❌ Not Authorized'}\n\n"
+            f"*Your Telegram Information:*\n"
+            f"*ID:* `{user.id}`\n"
+            f"*Username:* `@{user.username if user.username else 'None'}`\n"
+            f"*First Name:* {user.first_name}\n"
+            f"*Last Name:* {user.last_name if user.last_name else 'None'}\n"
+            f"*Language Code:* {user.language_code if user.language_code else 'None'}\n\n"
+            f"*Authorization Status:* {'✅ Authorized' if is_authorized else '❌ Not Authorized'}\n\n"
         )
-        await update.message.reply_text(message)
+        await update.message.reply_text(message, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
 
     async def check_new_sms(self):
         """Check for new SMS messages every 30 seconds"""
