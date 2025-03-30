@@ -5,5 +5,6 @@ cd "${my_dir}"
 
 cd ..
 . ./venv/bin/activate
-./server/smsgate.py
+
+python ./server/smsgate.py
 

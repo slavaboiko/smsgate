@@ -638,7 +638,7 @@ class Modem(threading.Thread):
             self.status = "Check port renumbering - Exception."
             return False
 
-        self.modem.smsTextMode = False
+        self.modem.smsTextMode = self.modem_config.sms_text_mode
 
         self.l.debug(f"Connecting to GSM modem on {self.current_port}.")
         self.status = "Connecting to modem."
@@ -649,7 +649,7 @@ class Modem(threading.Thread):
                 self.modem_config.pin,
                 waitingForModemToStartInSeconds=self.modem_config.wait_for_start,
             )
-            #self.modem.processStoredSms()
+            self.modem.processStoredSms(unreadOnly=True)
 
         except PinRequiredError:
             self.l.error(f"Error: SIM card PIN required. Please specify a PIN.")
@@ -685,7 +685,7 @@ class Modem(threading.Thread):
                 self.modem.close()
                 return False
 
-        self._delete_sms(all=True)
+        #self._delete_sms(all=True)
 
         # We do not check the balance immediately, but wait a bit.
         # self.check_balance()
@@ -849,8 +849,13 @@ class Modem(threading.Thread):
                 sendFlash=_sms.is_flash()
             )
             return True
-        except TimeoutException:
+        except Exception as e:
             self.l.error(f"Error: Failed to send SMS.")
+            self.sent_sms[_sms.get_id()] = SentSms(
+                _sms.get_recipient(), _sms.get_text(), reference=None, smsc=None
+            )
+            self.sent_sms[_sms.get_id()].report = e
+            
 
         return False
 
@@ -1045,6 +1050,29 @@ class Modem(threading.Thread):
                 self.close()
 
                 self._do_health_check(do_now=True)
+
+    def read_stored_sms(self) -> List[sms.SMS]:
+        """
+        Read all stored SMS from the SIM card.
+        @return: Returns a list of SMS objects.
+        """
+        sms_list = []
+        try:
+            stored_sms = self.modem.listStoredSms(delete=False)
+            for _sms in stored_sms:
+                new_sms = sms.SMS(
+                    sms_id=None,
+                    recipient=self.modem_config.phone_number,
+                    text=_sms.text,
+                    sender=_sms.number,
+                    timestamp=_sms.time,
+                    receiving_modem=self,
+                )
+                sms_list.append(new_sms)
+                self._handle_incoming_sms(new_sms)
+        except Exception as e:
+            self.l.error(f"Failed to read stored SMS: {str(e)}")
+        return sms_list
 
 
 class MyGsmModem(GsmModem):

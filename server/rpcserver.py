@@ -47,6 +47,7 @@ import logging
 import configparser
 import smtp
 import modempool
+import datetime
 
 # Our global variable for OpenSSL Cipher settings. It is read from the config
 ciphers = ""
@@ -90,6 +91,7 @@ class RPCServer(xmlrpc.XMLRPC):
             "api", "token_get_health_state"
         ).split()
         self.api_token["get_stats"] = config.get("api", "token_get_stats").split()
+        self.api_token["get_stored_sms"] = config.get("api", "token_get_stored_sms").split()
 
         self.api_token["get_sms"] = {}
         for modem_identifier in self.pool.get_identifier_for_phone_number():
@@ -187,22 +189,34 @@ class RPCServer(xmlrpc.XMLRPC):
         self.l.info(f"Request delivery status for {sms_id}.")
         return self.pool.get_delivery_status(sms_id)
 
-    def xmlrpc_get_sms(self, token: str, phone_number: str) -> List[sms.SMS]:
+    def xmlrpc_get_sms(self, token: str, phone_number: str) -> List[Dict[str, Union[str, bool, datetime.datetime]]]:
         """
         Exposed RPC function retrieves a list of SMS sent to a modem.
         @param token: The API token to use.
         @param phone_number:  Get SMS for this phone_number. If phone_number is empty,
             SMS to all phones are fetched if the API token permits this.
-        @return: Returns a list of SMS objects or an empty list.
+        @return: Returns a list of dictionaries containing SMS data or an empty list.
         """
         sms_list = []
-        self.l.info('Fetch SMS for phone number "{phone_number}".')
+        self.l.info(f"Fetch SMS for phone number \"{phone_number}\".")
         for modem_identifier in self.pool.get_identifier_for_phone_number(phone_number):
 
             if helper.check_token_in_list(
                     token, self.api_token["get_sms"][modem_identifier]
             ):
-                sms_list += self.pool.get_buffered_sms(modem_identifier)
+                # Get SMS objects and convert to dictionaries
+                buffered_sms = self.pool.get_buffered_sms(modem_identifier)
+                for _sms in buffered_sms:
+                    if _sms is not None:  # Skip None values
+                        sms_dict = {
+                            "id": _sms.get_id() or "",
+                            "recipient": _sms.get_recipient() or "",
+                            "text": _sms.get_text() or "",
+                            "sender": _sms.get_sender() or "",
+                            "timestamp": _sms.get_timestamp(),
+                            "flash": _sms.is_flash() if hasattr(_sms, 'is_flash') else False
+                        }
+                        sms_list.append(sms_dict)
             else:
                 self.l.error(
                     f"Invalid API token sent by client {self._getPeerAddress()}. API token was {token}."
@@ -298,6 +312,63 @@ class RPCServer(xmlrpc.XMLRPC):
             raise xmlrpc.Fault(401, "Invalid API token.")
 
         return "OK", self.pool.get_stats()
+
+    def xmlrpc_read_stored_sms(self, token: str) -> List[sms.SMS]:
+        """
+        Exposed RPC function to read all stored SMS from all modems.
+        @param token: The API token to use.
+        @return: Returns a list of SMS objects or an empty list.
+        """
+        if not helper.check_token_in_list(token, self.api_token["get_stored_sms"]):
+            self.l.error(
+                f"Invalid API token sent by client {self._getPeerAddress()}. API token was {token}."
+            )
+            raise xmlrpc.Fault(401, "Invalid API token.")
+
+        self.l.info("Reading stored SMS from all modems.")
+        return self.pool.read_stored_sms()
+
+    def xmlrpc_get_all_sms(self, token: str) -> List[Dict[str, Union[str, bool, datetime.datetime]]]:
+        """
+        Exposed RPC function retrieves all SMS messages from all modems.
+        @param token: The API token to use.
+        @return: Returns a list of dictionaries containing SMS data or an empty list.
+        """
+        sms_list = []
+        self.l.info("Fetching all SMS messages from all modems.")
+        
+        # Check if token has permission for any modem
+        has_permission = False
+        for modem_identifier in self.pool.get_identifier_for_phone_number():
+            if helper.check_token_in_list(token, self.api_token["get_sms"][modem_identifier]):
+                has_permission = True
+                break
+                
+        if not has_permission:
+            self.l.error(
+                f"Invalid API token sent by client {self._getPeerAddress()}. API token was {token}."
+            )
+            raise xmlrpc.Fault(401, "Invalid API token.")
+
+        # Get SMS from all modems
+        for modem_identifier in self.pool.get_identifier_for_phone_number():
+            if helper.check_token_in_list(token, self.api_token["get_sms"][modem_identifier]):
+                # Get SMS objects and convert to dictionaries
+                buffered_sms = self.pool.get_buffered_sms(modem_identifier)
+                for _sms in buffered_sms:
+                    if _sms is not None:  # Skip None values
+                        sms_dict = {
+                            "id": _sms.get_id() or "",
+                            "recipient": _sms.get_recipient() or "",
+                            "text": _sms.get_text() or "",
+                            "sender": _sms.get_sender() or "",
+                            "timestamp": _sms.get_timestamp(),
+                            "flash": _sms.is_flash() if hasattr(_sms, 'is_flash') else False,
+                            "modem": modem_identifier  # Add modem identifier to identify source
+                        }
+                        sms_list.append(sms_dict)
+
+        return sms_list
 
 
 class MySSLContext(SSL.Context):

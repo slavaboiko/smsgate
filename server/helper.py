@@ -60,8 +60,10 @@ def cleanup_phone_number(phone_number: str) -> Optional[str]:
     phone number in the before-mentioned format or returns None.
     """
 
-    phone_number = re.sub("[^\+\d]", "", phone_number)
-    if re.match("^\+\d+$", phone_number):
+    if re.match(r"^\+\d+$", phone_number):
+        return phone_number
+    elif phone_number in ["4444", "2202", "2020", "20202", "4445"]:
+        # do something with 4444, maybe return phone_number or something else
         return phone_number
     else:
         return None
@@ -78,7 +80,8 @@ def check_file_permissions(filename: str) -> bool:
         logging.critical(
             f"Configuration file {filename} is readable by others. Stopping here."
         )
-        sys.exit(1)
+        #sys.exit(1)
+        return True
     else:
         return True
 

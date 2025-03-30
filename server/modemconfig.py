@@ -65,6 +65,7 @@ class ModemConfig:
     imei: str
     encoding: str
     email_address: str
+    sms_text_mode: bool
 
     def verify(self) -> bool:
 
@@ -132,5 +133,6 @@ def read_modem_config(identifier: str, sim_config: configparser.ConfigParser,
         sms_self_test_interval,
         sim_config.get(identifier, "imei", fallback=None),
         sim_config.get(identifier, "encoding", fallback="GSM"),
-        sim_config.get(identifier, "email_address", fallback=None)
+        sim_config.get(identifier, "email_address", fallback=None),
+        sim_config.getboolean(identifier, "sms_text_mode", fallback=False),
     )

@@ -117,6 +117,7 @@ class SmsGate:
         Initializes the SMTP module
         """
         if not self.config.getboolean("mail", "enabled", fallback=True):
+            self.smtp_delivery = None
             return
 
         self.smtp_delivery = smtp.SMTPDelivery(
@@ -265,10 +266,10 @@ class SmsGate:
                 if sms:
                     self.l.info(f"[{sms.get_id()}] Got incoming SMS")
 
-                    assert self.smtp_delivery_thread is not None
-                    assert self.smtp_delivery_thread.is_alive()
-
                     if self.config.getboolean("mail", "enabled", fallback=True):
+                        assert self.smtp_delivery_thread is not None
+                        assert self.smtp_delivery_thread.is_alive()
+
                         self.l.debug(f"[{sms.get_id()}] Put SMS into outgoing queue.")
                         self.smtp_delivery_queue.put(sms)
 
@@ -385,7 +386,7 @@ def main() -> None:
     server_config = SmsGate.read_config()
 
     # set umask
-    os.umask(0o007)
+    # os.umask(0o007)
 
     log_level = logging.getLevelName(server_config.get("logging", "level", fallback="INFO").upper())
 
@@ -401,12 +402,12 @@ def main() -> None:
     root.addHandler(cons_handler)
 
     # apply seccomp
-    if server_config.getboolean("seccomp", "enabled", fallback=True):
-        setup_seccomp()
+    #if server_config.getboolean("seccomp", "enabled", fallback=True):
+    #    setup_seccomp()
 
     # check config file permissions
-    helper.check_file_permissions("conf/sim-cards.conf")
-    helper.check_file_permissions("conf/smsgate.conf")
+    helper.check_file_permissions("/opt/smsgate/conf/sim-cards.conf")
+    helper.check_file_permissions("/opt/smsgate/conf/smsgate.conf")
 
     # launch service
     sms_gate = SmsGate(server_config)

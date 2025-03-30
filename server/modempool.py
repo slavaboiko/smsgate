@@ -329,7 +329,7 @@ class ModemPool:
         @param identifier: The modem identifier as string.
         @return: Returns a list of buffered SMS objects. An empty list is returned if there are no SMS objects.
         """
-        return self.buffered_sms[identifier]
+        return list(self.buffered_sms.get(identifier, {}).values())
 
     def _buffer_sms(self, identifier: str, _sms: SMS) -> None:
         """
@@ -416,3 +416,15 @@ class ModemPool:
 
         self.l.info(stats)
         return stats
+
+    def read_stored_sms(self) -> List[SMS]:
+        """
+        Read all stored SMS from all modems.
+        @return: Returns a list of SMS objects.
+        """
+        all_sms = []
+        for identifier, modem in self.modems.items():
+            if modem:
+                sms_list = modem.read_stored_sms()
+                all_sms.extend(sms_list)
+        return all_sms

@@ -16,3 +16,6 @@ conf/smsgate.conf
 icinga/service-smsgate.conf
 conf/cert.pem
 conf/key.pem
+cert.pem
+key.pem
+
