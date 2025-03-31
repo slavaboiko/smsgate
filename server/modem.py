@@ -900,6 +900,25 @@ class Modem(threading.Thread):
             return None
 
         try:
+            # Update network and signal information before balance check
+            if self.modem:
+                self.current_network = self.modem.networkName
+                self.current_signal = self.modem.signalStrength
+                
+                if self.current_network:
+                    self.current_network = self.current_network.strip()
+
+                # Update modem state with current network and signal info
+                self.db.update_modem_state(
+                    modem_id=self.identifier,
+                    imei=self.modem.imei,
+                    imsi=self.modem.imsi,
+                    phone_number=self.modem_config.phone_number,
+                    network=self.current_network,
+                    signal_strength=self.current_signal,
+                    last_network_check=datetime.datetime.now(tz=None)
+                )
+
             response = self.send_ussd(self.modem_config.ussd_account_balance)
             if response is None:
                 self.l.debug(f"USSD response is None. Stop processing.")
@@ -920,13 +939,15 @@ class Modem(threading.Thread):
                 self.balance = float(balance)
                 self.l.debug(f"Balance as float: {self.balance} {self.get_currency()}")
                 
-                # Update modem state in database
+                # Update modem state in database with balance info
                 self.db.update_modem_state(
                     modem_id=self.identifier,
+                    imei=self.modem.imei,
+                    imsi=self.modem.imsi,
+                    phone_number=self.modem_config.phone_number,
                     balance=self.balance,
                     currency=self.modem_config.ussd_currency,
-                    network=self.current_network,
-                    last_balance_check=datetime.datetime.now()
+                    last_balance_check=datetime.datetime.now(tz=None)
                 )
 
                 # Record financial activity
@@ -1009,38 +1030,45 @@ class Modem(threading.Thread):
         """
         self.l.info(f"Run health check for modem.")
         self.last_health_check = datetime.datetime.now()
+        current_state = "OK"
+        state_message = None
 
         if self.modem is None:
             if self.modem_config.enabled:
-                return "CRITICAL", f"{self.identifier} No modem object."
+                current_state = "CRITICAL"
+                state_message = f"{self.identifier} No modem object."
             else:
-                return "WARNING", f"{self.identifier} No modem object."
+                current_state = "WARNING"
+                state_message = f"{self.identifier} No modem object."
+        else:
+            if self.modem.manufacturer is None:
+                current_state = "CRITICAL"
+                state_message = f"{self.identifier} Failed to communicate with modem to detect manufacturer."
 
-        if self.modem.manufacturer is None:
-            return (
-                "CRITICAL",
-                f"{self.identifier} Failed to communicate with modem to detect manufacturer.",
-            )
+            elif not self.modem.imsi:
+                current_state = "CRITICAL"
+                state_message = f"{self.identifier} There is no IMSI."
 
-        if not self.modem.imsi:
-            return "CRITICAL", f"{self.identifier} There is no IMSI."
+            elif not self.modem.smsc:
+                current_state = "CRITICAL"
+                state_message = f"{self.identifier} No SMSC set."
 
-        if not self.modem.smsc:
-            return "CRITICAL", f"{self.identifier} No SMSC set."
+            else:
+                signal_strength = self.modem.signalStrength
+                if signal_strength == -1:
+                    current_state = "WARNING"
+                    state_message = f"{self.identifier} Unknown signal strength."
 
-        s = self.modem.signalStrength
-        if s == -1:
-            return "WARNING", f"{self.identifier} Unknown signal strength."
+                elif signal_strength <= 1:
+                    current_state = "CRITICAL"
+                    state_message = f"{self.identifier} Weak signal strength."
 
-        if s <= 1:
-            return "CRITICAL", f"{self.identifier} Weak signal strength."
-
-        if s <= 5:
-            return "WARNING", f"{self.identifier} Weak signal strength."
+                elif signal_strength <= 5:
+                    current_state = "WARNING"
+                    state_message = f"{self.identifier} Weak signal strength."
 
         # Account balance checks fail frequently, therefore this check only results in warnings
         # with valid balances.
-
         if self.modem_config.ussd_account_balance and self.modem_config.ussd_account_balance_regexp:
 
             #    if self.check_balance() is None:
@@ -1050,7 +1078,8 @@ class Modem(threading.Thread):
                 if self.balance is not None:
                     level, log = self._check_balance_thresholds()
                     if level != "OK":
-                        return level, log
+                        current_state = level
+                        state_message = log
 
         # At certain intervals send an SMS to ourself
         now = datetime.datetime.now()
@@ -1067,7 +1096,6 @@ class Modem(threading.Thread):
             day_matches = True
 
         if day_matches:
-
             seconds_since_midnight = (
                     now - now.replace(hour=0, minute=0, second=0, microsecond=0)
             ).total_seconds()
@@ -1092,13 +1120,27 @@ class Modem(threading.Thread):
 
             elif self.health_check_expected_token:
                 self.l.info("Failed to receive the test SMS. There is a problem.")
-                return (
-                    "WARNING",
-                    f"{self.identifier} Failed to send test SMS to oneself.",
-                )
+                current_state = "WARNING"
+                state_message = f"{self.identifier} Failed to send test SMS to oneself."
 
         self.status = "Ready."
-        return "OK", None
+
+        # Update modem state in database
+        self.db.update_modem_state(
+            modem_id=self.identifier,
+            imei=self.modem.imei,
+            imsi=self.modem.imsi,
+            phone_number=self.modem_config.phone_number,
+            is_online=self.modem is not None,
+            last_health_check=self.last_health_check,
+            health_state=current_state,
+            health_message=state_message,
+            network=self.current_network,
+            signal_strength=self.modem.signalStrength if self.modem else None,
+            last_online=datetime.datetime.now(tz=None) if current_state == "OK" else None
+        )
+        
+        return current_state, state_message
 
     def _send_test_sms(self) -> None:
         """

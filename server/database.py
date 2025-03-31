@@ -49,14 +49,19 @@ class Database:
                 CREATE TABLE IF NOT EXISTS modem_state (
                     modem_id TEXT PRIMARY KEY,
                     balance REAL,
+                    imei TEXT,
+                    imsi TEXT,
+                    phone_number TEXT,
                     currency TEXT,
                     network TEXT,
                     signal_strength INTEGER,
                     last_balance_check DATETIME,
                     last_network_check DATETIME,
-                    last_signal_check DATETIME,
                     is_online BOOLEAN DEFAULT 0,
                     last_online DATETIME,
+                    last_health_check DATETIME,
+                    health_state TEXT,
+                    health_message TEXT,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
