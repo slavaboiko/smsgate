@@ -88,6 +88,7 @@ class SMS:
         self.total_parts = total_parts if total_parts is not None else 1  # Default to 1 for single messages
         self.part_number = part_number
         self.parts = {}  # Dictionary to store message parts
+        self.parts[part_number] = text
 
     def get_timestamp(self) -> datetime.datetime:
         """ Returns the timestamp as Python datetime. """
@@ -144,6 +145,9 @@ class SMS:
             + f"Message timestamp : {self.timestamp.strftime(ts_fmt)}\n"
             + f"Created timestamp : {self.created_timestamp.strftime(ts_fmt)}\n"
             + f"Flash message     : {self.flash}\n"
+            + f"Message ref       : {str(self.message_ref)}\n"
+            + f"Total parts       : {str(self.total_parts)}\n"
+            + f"Part number       : {str(self.part_number)}\n"
         )
         if self.receiving_modem:
             text += f"Receiving modem   : {self.receiving_modem.get_identifier()}\n"
@@ -170,7 +174,7 @@ class SMS:
         """
         # Always encode text in base64 for consistent format
         text = self.get_concatenated_text() if self.is_multipart() else self.get_text() or ""
-        text_encoded = base64.b64encode(text.encode('latin1')).decode('ascii')
+        text_encoded = base64.b64encode(text.encode('utf-8')).decode('utf-8')
 
         # Convert timestamp to ISO format string for XML-RPC serialization
         timestamp = self.get_timestamp()
@@ -235,3 +239,6 @@ class SMS:
         # Update the main text if this is the first part
         if part_number == 1:
             self.text = text
+
+        if (len(self.parts) == self.total_parts):
+            self.text = self.get_concatenated_text()

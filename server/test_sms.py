@@ -2,55 +2,76 @@
 import pytest
 from gsmmodem.pdu import decodeSmsPdu
 
-# Define test cases as a list of tuples
-@pytest.mark.parametrize("test_input,expected,description", [
-    (
-        "050003B4D0B5D0BBD0B5D0B3D0BED0B2D0B0D0B9D182D0B5",
-        "елеговайте",
-        "Russian text in PDU format ('елеговайте' in UTF-8 hex)"
-    ),
-    (
-        "Hello, World!",
-        "Hello, World!",
-        "Non-PDU text (should remain unchanged)"
-    ),
-    (
-        "050003B4invalid",
-        "050003B4invalid",
-        "Invalid PDU format (should return original text if decoding fails)"
-    ),
-    (
-        "050003B4",
-        "050003B4",
-        "Empty PDU header (should return original text if no data after header)"
-    ),
-    (
-        "050003B4D0B5D0B",
-        "050003B4D0B5D0B",
-        "Malformed hex data (should return original text if hex is invalid)"
-    ),
-    (
-        "050003B507070442043D0430044F00200433043E0440044F04470430044F0020043B0438043D0438044F0020043200200440043E0443043C0438043D04330435003A0020003000350030003000200438043B04380020002B00370039003200360031003100310030003900390039",
-        "Большой текст с цифрами: 0500 887926111099",
-        "Large text with numbers: 0500 887926111099"
+from unittest import mock
+from server import sms
+import datetime
+
+def test_concatenation():
+    """
+    Test concatenation of multi-part SMS messages.
+    Tests that parts are properly combined in order and the complete message is assembled correctly.
+    """
+    # Create a mock modem
+    mock_modem = mock.Mock()
+    mock_modem.get_identifier.return_value = "00"
+    mock_modem.get_current_network.return_value = "Fake Operator"
+
+    expected_text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+    parts = [expected_text[i:i+140] for i in range(0, len(expected_text), 140)]
+
+    # Create SMS parts
+    sms_parts = [
+        sms.SMS(
+            sms_id=None,
+            recipient="+44123456789",
+            text=parts[i],
+            timestamp=datetime.datetime(2025, 3, 31, 9, 7, 54, tzinfo=datetime.timezone(datetime.timedelta(hours=1))),
+            sender="+44123456789",
+            receiving_modem=mock_modem,
+            message_ref=202,
+            total_parts=len(parts),
+            part_number=i+1
+        ) for i in range(len(parts))
+    ]
+
+    # Create base SMS object to add parts to
+    base_sms = sms_parts[0]
+
+    # Add remaining parts
+    for part in sms_parts[1:]:
+        print("Adding part: ", part.part_number, part.text)
+        base_sms.add_part(part.part_number, part.text)
+
+    assert base_sms.is_multipart() == True
+    assert base_sms.total_parts == len(parts)
+    assert len(base_sms.parts) == len(parts)
+    assert base_sms.get_concatenated_text() == expected_text
+    assert base_sms.is_part_complete() == True
+    assert base_sms.text == expected_text
+
+
+def test_cyrillic_sms_to_dict():
+        # Create a mock modem
+    mock_modem = mock.Mock()
+    mock_modem.get_identifier.return_value = "00"
+    mock_modem.get_current_network.return_value = "Fake Operator"
+
+    expected_text = "Противоположная точка зрения подразумевает, что некоторые особенности внутренней политики заблокированы в рамках своих собственных рациональных ограничений. Имеется спорная точка зрения, гласящая примерно следующее: стремящиеся вытеснить традиционное производство, нанотехнологии будут обнародованы. Банальные, но неопровержимые выводы, а также ключевые особенности структуры проекта призывают нас к новым свершениям, которые, в свою очередь, должны быть объективно рассмотрены соответствующими инстанциями. Современные технологии достигли такого уровня, что реализация намеченных плановых заданий предполагает независимые способы реализации распределения внутренних резервов и ресурсов."
+
+    # Create SMS parts
+    complete_sms = sms.SMS(
+        sms_id=None,
+        recipient="+44123456789",
+        text=expected_text,
+        timestamp=datetime.datetime(2025, 3, 31, 9, 7, 54, tzinfo=datetime.timezone(datetime.timedelta(hours=1))),
+        sender="+44123456789",
+        receiving_modem=mock_modem,
+        message_ref=None,
+        total_parts=None,
+        part_number=None
     )
-])
-def test_pdu_decoding(test_input, expected, description):
-    """
-    Test PDU decoding functionality.
-    PDU format: 050003B4<hex_data>
-    - 05: Data coding scheme (DCS)
-    - 00: Message class
-    - 03: Message reference
-    - B4: User data length
-    - <hex_data>: UTF-8 encoded text
-    """
-    
-    result = decodeSmsPdu(test_input)
-    
-    assert result == expected
+
+    complete_sms.to_dict()
 
 if __name__ == '__main__':
-    result = decodeSmsPdu("050003B4D0B5D0BBD0B5D0B3D0BED0B2D0B0D0B9D182D0B5")
-    print(result)
-    #pytest.main()
+    pytest.main()

@@ -64,7 +64,7 @@ class SMSGateRPCClient:
         @param text: The text to decode
         @return: Decoded text
         """
-        return base64.b64decode(text.encode('ascii')).decode("ascii")
+        return base64.b64decode(text.encode('utf-8')).decode("utf-8")
 
     def get_sms(self, phone_number: str = "") -> List[Dict[str, Union[str, bool, datetime]]]:
         """

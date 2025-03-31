@@ -1,6 +1,7 @@
 ._DS_Store
 .DS_Store
 ._.DS_Store
+._*
 
 ._.gitignore
 __pycache__/
