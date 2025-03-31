@@ -35,7 +35,8 @@
 #  reviewed by *international* volunteers, this clause shall not be refused
 #  due to the matter of *national* security concerns.
 # -----------------------------------------------------------------------------
-from typing import Optional, Union, List, Tuple, Dict
+from typing import Optional, Union, List, Tuple, Dict, Any
+import sqlite3
 
 from twisted.web import xmlrpc, server
 from twisted.internet import reactor, endpoints, ssl
@@ -48,6 +49,7 @@ import configparser
 import smtp
 import modempool
 import datetime
+import database
 
 # Our global variable for OpenSSL Cipher settings. It is read from the config
 ciphers = ""
@@ -62,6 +64,7 @@ class RPCServer(xmlrpc.XMLRPC):
             config: configparser.ConfigParser,
             _modempool: modempool.ModemPool,
             smtp_delivery: smtp.SMTPDelivery,
+            database: database.Database,
     ) -> None:
         """
         Create a new XMLRPC server interface.
@@ -81,6 +84,7 @@ class RPCServer(xmlrpc.XMLRPC):
         self.config = config
         self.pool = _modempool
         self.smtp_delivery = smtp_delivery
+        self.db = database
         xmlrpc.XMLRPC.__init__(self)
 
         # read API token from configuration
@@ -371,6 +375,7 @@ def set_up_server(
         config: configparser.ConfigParser,
         modempool: modempool.ModemPool,
         smtp: smtp.SMTPDelivery,
+        db: database.Database,
 ) -> None:
     """
     Create a new XMLRPC server.
@@ -380,6 +385,7 @@ def set_up_server(
     @param config: A configuration object of type ConfigParser.
     @param modempool: A ModemPool object to interact with.
     @param smtp: The SMTPDelivery object.
+    @param db: The database object.
     """
     global ciphers
 
@@ -406,7 +412,7 @@ def set_up_server(
     )
 
     l.debug("Launching site.")
-    factory = server.Site(RPCServer(config, modempool, smtp))
+    factory = server.Site(RPCServer(config, modempool, smtp, db))
     l.debug("Listen for connections.")
     https_server.listen(factory)
     l.debug("Calling run().")

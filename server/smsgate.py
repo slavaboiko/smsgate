@@ -54,7 +54,7 @@ import modemconfig
 import modempool
 import rpcserver
 import smtp
-
+import database
 
 class SmsGate:
     """
@@ -74,6 +74,7 @@ class SmsGate:
         self.l = logging.getLogger("SmsGate")
 
         # initialize sub-modules
+        self._init_db()
         self._init_smtp_delivery()
         self._init_pool()
         self._init_rpcserver()
@@ -100,6 +101,17 @@ class SmsGate:
         config.read(conf_file)
         return config
 
+    def _init_db(self) -> None:
+        """
+        Initializes the database.
+        """
+        try:
+            db_path = self.config.get("db", "path")
+        except (configparser.NoSectionError, configparser.NoOptionError) as e:
+            raise Exception("Database path configuration is mandatory but missing") from e
+
+        self.db = database.Database(db_path)
+
     def _init_rpcserver(self) -> None:
         """
         Initializes the XMLRPC server module.
@@ -108,7 +120,7 @@ class SmsGate:
 
         self.server_thread = threading.Thread(
             target=rpcserver.set_up_server,
-            args=(self.config, self.pool, self.smtp_delivery),
+            args=(self.config, self.pool, self.smtp_delivery, self.db),
         )
         self.server_thread.start()
 
@@ -216,7 +228,7 @@ class SmsGate:
                 self.l.info(f"[{identifier}] Initializing modem {identifier}.")
                 for i in range(0, 3):
                     try:
-                        gsmmodem = modem.Modem(identifier, modem_conf, self.config.get("modempool", "serial_ports_hint_file"))
+                        gsmmodem = modem.Modem(identifier, modem_conf, self.config.get("modempool", "serial_ports_hint_file"), self.db)
                         if gsmmodem:
                             gsmmodem.set_event_thread(
                                 self.event_available

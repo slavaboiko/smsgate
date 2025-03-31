@@ -64,17 +64,18 @@ from gsmmodem.pdu import decodeSmsPdu, Concatenation
 import modemconfig
 import sms
 import serialportmapper
+import database
 
 
 
 class Modem(threading.Thread):
-    def __init__(self, identifier: str, modem_config: modemconfig.ModemConfig, serial_ports_hint_file: str) -> None:
+    def __init__(self, identifier: str, modem_config: modemconfig.ModemConfig, serial_ports_hint_file: str, db: database.Database) -> None:
         assert identifier is not None
         self.event_available = None
         self.identifier = identifier
         self.modem_config = modem_config
         self.serial_ports_hint_file = serial_ports_hint_file
-
+        self.db = db
         self.balance = None
         self.sms_receiver_queue = queue.Queue()
         self.sms_sender_queue = queue.Queue()
@@ -322,6 +323,14 @@ class Modem(threading.Thread):
                 total_parts=total_parts,
                 part_number=part_number
             )
+ 
+            # Track incoming SMS event
+            self.db.add_event(
+                event_type='incoming_sms',
+                modem_id=self.identifier,
+                timestamp=new_sms.get_timestamp(),
+                metadata=new_sms.to_dict()
+            )
 
             # If this is a multi-part message, try to find existing message
             if message_ref is not None and total_parts is not None and part_number is not None:
@@ -359,6 +368,17 @@ class Modem(threading.Thread):
                 message_ref=None,
                 total_parts=None,
                 part_number=None
+            )
+
+            # Track incoming call event
+            self.db.add_event(
+                event_type='incoming_call',
+                modem_id=self.identifier,
+                timestamp=new_sms.get_timestamp(),
+                metadata={
+                    'caller': _call.number,
+                    'recipient': self.modem_config.phone_number
+                }
             )
 
             self._handle_incoming_sms(new_sms)
@@ -447,6 +467,23 @@ class Modem(threading.Thread):
         self.sms_sender_queue.put(_sms)
         self.last_sent = datetime.datetime.now(tz=None)
         self.stats_sent_sms += 1
+
+        # Track outgoing SMS event
+        self.db.add_event(
+            event_type='outgoing_sms',
+            modem_id=self.identifier,
+            timestamp=_sms.get_timestamp(),
+            metadata=_sms.to_dict()
+        )
+
+        # Record financial activity
+        self.db.add_financial_activity(
+            modem_id=self.identifier,
+            event_type='sms_sent',
+            amount=self.modem_config.costs_per_sms,
+            currency=self.modem_config.ussd_currency,
+            details=f"SMS sent to {_sms.get_recipient()}"
+        )
 
     def get_delivery_status(self, sms_id: str) -> bool:
         """
@@ -859,12 +896,10 @@ class Modem(threading.Thread):
         O2 in Germany.
         @return: Returns the balance as float. None is returned on error or if the balance information is not available.
         """
-
         if not self.modem_config.ussd_account_balance:
             return None
 
         try:
-
             response = self.send_ussd(self.modem_config.ussd_account_balance)
             if response is None:
                 self.l.debug(f"USSD response is None. Stop processing.")
@@ -884,6 +919,22 @@ class Modem(threading.Thread):
                 balance = balance.replace(",", ".")
                 self.balance = float(balance)
                 self.l.debug(f"Balance as float: {self.balance} {self.get_currency()}")
+                
+                # Update modem state in database
+                self.db.update_modem_state(
+                    modem_id=self.identifier,
+                    balance=self.balance,
+                    currency=self.modem_config.ussd_currency,
+                    network=self.current_network,
+                    last_balance_check=datetime.datetime.now()
+                )
+
+                # Record financial activity
+                self.db.add_financial_activity(
+                    modem_id=self.identifier,
+                    event_type='ussd_balance_check',
+                    details=f"Balance check via USSD: {response}"
+                )
 
                 return self.balance
             else:
