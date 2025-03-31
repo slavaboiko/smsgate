@@ -404,17 +404,12 @@ Available commands:
                     # Send notifications grouped by modem
                     for modem, messages in messages_by_modem.items():
                         for sms in messages:
-                            message = (
-                                f"New SMS received on modem {modem}!\n"
-                                f"From: {sms['sender']}\n"
-                                f"To: {sms['recipient']}\n"
-                                f"Time: {sms['timestamp']}\n"
-                                f"Text:\n\n{sms['text']}\n"
-                            )
+                            message = self.render_sms_message(sms, modem)
+                            
                             # Notify all allowed users
                             for user_id in self.allowed_users:
                                 try:
-                                    await self.application.bot.send_message(chat_id=user_id, text=message, disable_web_page_preview=True)
+                                    await self.application.bot.send_message(chat_id=user_id, text=message, disable_web_page_preview=True, parse_mode=telegram.constants.ParseMode.MARKDOWN_V2)
                                 except Exception as e:
                                     logger.error(f"Error sending notification to user {user_id}: {e}")
             except Exception as e:
@@ -463,6 +458,21 @@ Available commands:
                 await self.application.shutdown()
         except Exception as e:
             logger.error(f"Error in stop(): {e}")
+
+    def render_sms_message(self, sms_dict: Dict[str, Any], modem_identifier: str) -> str:
+        """Render a SMS message for display in Telegram"""
+        message = (
+            f"_New SMS received on modem {modem_identifier}\!_\n"
+            f"*From*: `{sms_dict['sender']}`\n"
+            f"*To:* `{sms_dict['recipient']}`\n"
+            f"*Time:* `{sms_dict['timestamp']}`\n"
+            f"*Text:*\n\n"
+            f"```\n"
+            f"{sms_dict['text']}\n"
+            f"```"
+        )
+
+        return message
 
 async def main_async():
     try:
